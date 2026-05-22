@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart PDF Compressor</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css">
+    
+    <!-- PDF processing libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    colors: {
+                        primary: '#10B981',
+                        'primary-dark': '#059669',
+                        'primary-light': '#D1FAE5',
+                    },
+                    boxShadow: {
+                        'soft': '0 4px 18px rgba(0,0,0,0.06)',
+                        'hover': '0 8px 30px rgba(0,0,0,0.10)',
+                    },
+                    borderRadius: {
+                        'xl': '24px',
+                        'lg': '18px',
+                        'md': '14px',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom styles for elements Tailwind can't easily handle */
+        body { background-color: #F9FAFB; color: #111827; }
+        
+        .upload-zone {
+            background: linear-gradient(180deg, #ffffff, #f9fafb);
+            transition: all 0.25s ease;
+        }
+        .upload-zone:hover, .upload-zone.dragover {
+            border-color: #10B981;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(0,0,0,0.10);
+            background: linear-gradient(180deg, #F0FDF4, #ffffff);
+        }
+        
+        /* Custom Toggle Switch */
+        .toggle-checkbox:checked {
+            right: 0;
+            border-color: #10B981;
+        }
+        .toggle-checkbox:checked + .toggle-label {
+            background-color: #10B981;
+        }
+        
+        /* Range Slider */
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 20px;
+            width: 20px;
+            border-radius: 50%;
+            background: #10B981;
+            cursor: pointer;
+            margin-top: -8px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: #E5E7EB;
+            border-radius: 2px;
+        }
+
+        /* Animations */
+        @keyframes pulse-ring {
+            0% { transform: scale(0.8); opacity: 0.5; }
+            100% { transform: scale(1.3); opacity: 0; }
+        }
+        .processing-ring::before {
+            content: '';
+            position: absolute;
+            left: 0; top: 0; width: 100%; height: 100%;
+            background-color: #10B981;
+            border-radius: 50%;
+            z-index: -1;
+            animation: pulse-ring 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+        }
+        
+        /* Hide scrollbar for clean UI */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 4px; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center py-8 px-4 sm:px-6 lg:px-8">
+
+    <div class="w-full max-w-2xl">
+        
+        <!-- Header -->
+        <div class="text-center mb-8">
+            <div class="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary-light text-primary mb-4">
+                <i class="ti ti-file-zip text-2xl"></i>
+            </div>
+            <h1 class="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">Smart PDF Compressor</h1>
+            <p class="mt-2 text-sm text-gray-500">Compress PDFs instantly. Private • Secure • No uploads required.</p>
+        </div>
+
+        <!-- Main Card Container -->
+        <div class="bg-white rounded-xl shadow-soft p-1 sm:p-2 border border-gray-100 relative overflow-hidden">
+            
+            <!-- STEP 1: UPLOAD -->
+            <div id="step-upload" class="p-4 sm:p-8 transition-opacity duration-300">
+                <div id="drop-zone" class="upload-zone border-2 border-dashed border-gray-300 rounded-xl p-8 sm:p-14 text-center cursor-pointer group relative">
+                    <input type="file" id="file-input" accept="application/pdf" class="hidden">
+                    
+                    <div class="mx-auto w-20 h-20 mb-6 bg-gray-50 rounded-full flex items-center justify-center group-hover:scale-110 group-hover:bg-primary-light transition-all duration-300">
+                        <i class="ti ti-cloud-upload text-4xl text-gray-400 group-hover:text-primary transition-colors"></i>
+                    </div>
+                    
+                    <h3 class="text-lg font-semibold text-gray-900 mb-2">Drag & Drop your PDF here</h3>
+                    <p class="text-sm text-gray-500 mb-6">or click to browse files from your device</p>
+                    
+                    <div class="inline-flex items-center gap-2 text-xs font-medium text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-full">
+                        <i class="ti ti-shield-check"></i>
+                        Files never leave your device
+                    </div>
+                </div>
+            </div>
+
+            <!-- STEP 2: SETTINGS -->
+            <div id="step-settings" class="hidden p-4 sm:p-6 transition-opacity duration-300">
+                
+                <!-- File Info Card -->
+                <div class="flex items-center gap-4 bg-gray-50 p-4 rounded-lg border border-gray-100 mb-6">
+                    <div class="w-12 h-12 bg-white rounded-md shadow-sm flex items-center justify-center text-red-500 shrink-0">
+                        <i class="ti ti-file-type-pdf text-2xl"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <h4 id="ui-filename" class="text-sm font-semibold text-gray-900 truncate">document.pdf</h4>
+                        <p class="text-xs text-gray-500 mt-1"><span id="ui-pages" class="font-medium">0</span> Pages • <span id="ui-orig-size" class="font-medium text-gray-700">0 MB</span></p>
+                    </div>
+                    <button onclick="resetApp()" class="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors" aria-label="Remove file">
+                        <i class="ti ti-trash"></i>
+                    </button>
+                </div>
+
+                <!-- Compression Goals -->
+                <h3 class="text-sm font-semibold text-gray-900 mb-3">Choose Compression Goal</h3>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+                    
+                    <label class="relative flex cursor-pointer rounded-lg border bg-white p-4 shadow-sm hover:border-primary focus:outline-none transition-all goal-card active-goal" data-goal="recommended">
+                        <input type="radio" name="goal" value="recommended" class="peer sr-only" checked onchange="handleGoalChange()">
+                        <span class="flex flex-1">
+                            <span class="flex flex-col">
+                                <span class="block text-sm font-medium text-gray-900 flex items-center gap-2">
+                                    <i class="ti ti-thumb-up text-primary"></i> Recommended
+                                </span>
+                                <span class="mt-1 flex items-center text-xs text-gray-500">Best for WhatsApp & Email</span>
+                            </span>
+                        </span>
+                        <i class="ti ti-circle-check text-primary text-xl absolute right-4 top-4 opacity-100 transition-opacity"></i>
+                    </label>
+
+                    <label class="relative flex cursor-pointer rounded-lg border bg-white p-4 shadow-sm hover:border-primary focus:outline-none transition-all goal-card" data-goal="smallest">
+                        <input type="radio" name="goal" value="smallest" class="peer sr-only" onchange="handleGoalChange()">
+                        <span class="flex flex-1">
+                            <span class="flex flex-col">
+                                <span class="block text-sm font-medium text-gray-900 flex items-center gap-2">
+                                    <i class="ti ti-minimize text-blue-500"></i> Smallest Size
+                                </span>
+                                <span class="mt-1 flex items-center text-xs text-gray-500">Maximum compression</span>
+                            </span>
+                        </span>
+                    </label>
+
+                    <label class="relative flex cursor-pointer rounded-lg border bg-white p-4 shadow-sm hover:border-primary focus:outline-none transition-all goal-card" data-goal="quality">
+                        <input type="radio" name="goal" value="quality" class="peer sr-only" onchange="handleGoalChange()">
+                        <span class="flex flex-1">
+                            <span class="flex flex-col">
+                                <span class="block text-sm font-medium text-gray-900 flex items-center gap-2">
+                                    <i class="ti ti-photo-star text-purple-500"></i> High Quality
+                                </span>
+                                <span class="mt-1 flex items-center text-xs text-gray-500">Best visual clarity</span>
+                            </span>
+                        </span>
+                    </label>
+
+                    <label class="relative flex cursor-pointer rounded-lg border bg-white p-4 shadow-sm hover:border-primary focus:outline-none transition-all goal-card border-dashed" data-goal="target">
+                        <input type="radio" name="goal" value="target" class="peer sr-only" onchange="handleGoalChange()">
+                        <span class="flex flex-1">
+                            <span class="flex flex-col w-full">
+                                <span class="block text-sm font-medium text-gray-900 flex items-center gap-2">
+                                    <i class="ti ti-target text-orange-500"></i> Target File Size
+                                </span>
+                                <div id="target-input-area" class="mt-2 hidden w-full relative">
+                                    <input type="number" id="target-mb" value="5" min="0.1" step="0.1" class="block w-full rounded-md border-gray-300 bg-gray-50 border py-1.5 pl-3 pr-10 text-sm focus:border-primary focus:ring-primary">
+                                    <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-xs text-gray-500 font-medium">MB</div>
+                                </div>
+                                <span id="target-desc" class="mt-1 flex items-center text-xs text-gray-500">Compress under a specific limit</span>
+                            </span>
+                        </span>
+                    </label>
+                </div>
+
+                <!-- Advanced Settings Toggle -->
+                <div class="border-t border-gray-100 pt-4 mb-6">
+                    <button type="button" onclick="toggleAdvanced()" class="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 font-medium w-full text-left">
+                        <i id="adv-icon" class="ti ti-chevron-right transition-transform"></i>
+                        Advanced Settings <span class="text-xs font-normal text-gray-400 ml-auto">For power users</span>
+                    </button>
+                    
+                    <div id="adv-settings" class="hidden mt-4 space-y-4 bg-gray-50 p-4 rounded-lg border border-gray-200">
+                        
+                        <div>
+                            <div class="flex justify-between mb-1">
+                                <label class="text-xs font-medium text-gray-700">Image Optimization (Quality)</label>
+                                <span id="ui-quality-val" class="text-xs text-gray-500 font-mono">65%</span>
+                            </div>
+                            <input type="range" id="adv-quality" min="10" max="100" value="65" class="w-full" oninput="updateEstimates()">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700 mb-1">Rendering Resolution</label>
+                            <select id="adv-dpi" class="block w-full rounded-md border-gray-300 border py-1.5 pl-3 pr-8 text-sm focus:border-primary focus:ring-primary bg-white" onchange="updateEstimates()">
+                                <option value="72">Low (72 DPI)</option>
+                                <option value="150" selected>Medium (150 DPI)</option>
+                                <option value="300">High (300 DPI)</option>
+                            </select>
+                        </div>
+
+                        <div class="flex items-center justify-between pt-2">
+                            <span class="flex flex-col">
+                                <span class="text-sm font-medium text-gray-900">Grayscale</span>
+                                <span class="text-xs text-gray-500">Convert document to black & white</span>
+                            </span>
+                            <div class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
+                                <input type="checkbox" name="toggle" id="adv-gray" class="toggle-checkbox absolute block w-5 h-5 rounded-full bg-white border-4 border-gray-300 appearance-none cursor-pointer transition-all duration-300" onchange="updateEstimates()"/>
+                                <label for="adv-gray" class="toggle-label block overflow-hidden h-5 rounded-full bg-gray-300 cursor-pointer transition-colors duration-300"></label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Action Area -->
+                <div class="bg-primary-light/30 rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 border border-primary-light">
+                    <div>
+                        <p class="text-xs text-gray-600 font-medium uppercase tracking-wide">Estimated Output</p>
+                        <p id="ui-estimate" class="text-lg font-bold text-primary-dark">~14 MB</p>
+                    </div>
+                    <button id="btn-compress" onclick="startCompression()" class="w-full sm:w-auto bg-primary hover:bg-primary-dark text-white font-medium py-3 px-8 rounded-lg shadow-sm transition-all flex items-center justify-center gap-2 transform active:scale-95">
+                        <i class="ti ti-wand"></i> Compress PDF
+                    </button>
+                </div>
+            </div>
+
+            <!-- STEP 3: PROCESSING -->
+            <div id="step-processing" class="hidden p-8 sm:p-12 text-center flex flex-col items-center justify-center min-h-[300px]">
+                <div class="relative w-20 h-20 flex items-center justify-center mb-6">
+                    <div class="processing-ring"></div>
+                    <div class="w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-sm z-10 relative">
+                        <i class="ti ti-settings animate-spin text-3xl text-primary"></i>
+                    </div>
+                </div>
+                <h3 id="ui-progress-title" class="text-xl font-semibold text-gray-900 mb-2">Analyzing Document...</h3>
+                <p id="ui-progress-desc" class="text-sm text-gray-500 mb-6 h-5">Applying smart compression algorithms</p>
+                
+                <div class="w-full max-w-xs bg-gray-200 rounded-full h-2.5 mb-2 overflow-hidden">
+                    <div id="ui-progress-bar" class="bg-primary h-2.5 rounded-full transition-all duration-300 ease-out" style="width: 0%"></div>
+                </div>
+                <p class="text-xs font-mono text-gray-400"><span id="ui-progress-pct">0</span>%</p>
+            </div>
+
+            <!-- STEP 4: SUCCESS -->
+            <div id="step-success" class="hidden p-6 sm:p-8 text-center">
+                <div class="inline-flex items-center justify-center w-20 h-20 rounded-full bg-green-100 text-green-500 mb-4 animate-[bounce_1s_ease-in-out_1]">
+                    <i class="ti ti-confetti text-4xl"></i>
+                </div>
+                <h2 class="text-2xl font-bold text-gray-900 mb-2">Your PDF is Ready!</h2>
+                
+                <div class="bg-gray-50 rounded-xl p-6 my-6 border border-gray-100 flex items-center justify-center gap-4 sm:gap-8">
+                    <div class="text-center">
+                        <p class="text-xs text-gray-500 uppercase tracking-wide font-medium mb-1">Original</p>
+                        <p id="ui-res-orig" class="text-lg font-semibold text-gray-400 line-through">24.5 MB</p>
+                    </div>
+                    <div class="text-gray-300">
+                        <i class="ti ti-arrow-right text-2xl"></i>
+                    </div>
+                    <div class="text-center">
+                        <p class="text-xs text-primary-dark uppercase tracking-wide font-medium mb-1">Compressed</p>
+                        <p id="ui-res-new" class="text-2xl font-bold text-primary">4.2 MB</p>
+                    </div>
+                </div>
+
+                <div class="inline-block bg-primary-light text-primary-dark text-sm font-semibold px-4 py-1.5 rounded-full mb-8">
+                    Saved <span id="ui-res-saved">82</span>% space 🎉
+                </div>
+
+                <div class="flex flex-col sm:flex-row gap-3 justify-center">
+                    <button onclick="downloadPDF()" class="bg-primary hover:bg-primary-dark text-white font-medium py-3 px-6 rounded-lg shadow-soft hover:shadow-hover transition-all flex items-center justify-center gap-2">
+                        <i class="ti ti-download text-lg"></i> Download PDF
+                    </button>
+                    <button onclick="resetApp()" class="bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-medium py-3 px-6 rounded-lg transition-all flex items-center justify-center gap-2">
+                        <i class="ti ti-refresh text-lg"></i> Compress Another
+                    </button>
+                </div>
+                
+                <!-- Simulated Share options -->
+                <div class="mt-8 pt-6 border-t border-gray-100 flex items-center justify-center gap-4 text-gray-400">
+                    <span class="text-xs uppercase tracking-wide">Share via:</span>
+                    <button class="hover:text-[#25D366] transition-colors" title="WhatsApp"><i class="ti ti-brand-whatsapp text-xl"></i></button>
+                    <button class="hover:text-[#EA4335] transition-colors" title="Email"><i class="ti ti-mail text-xl"></i></button>
+                    <button class="hover:text-[#4285F4] transition-colors" title="Drive"><i class="ti ti-brand-google-drive text-xl"></i></button>
+                </div>
+            </div>
+
+        </div>
+        
+        <div class="mt-6 text-center text-xs text-gray-400">
+            Processed locally in your browser. Files are not uploaded to any server.
+        </div>
+    </div>
+
+    <script>
+        // --- State ---
+        let currentFile = null;
+        let originalSize = 0;
+        let pdfDoc = null;
+        let outputBlob = null;
+        let outputFilename = '';
+        let isAdvancedOpen = false;
+
+        // Configuration mapping
+        const PRESETS = {
+            'recommended': { q: 65, dpi: 150, gray: false },
+            'smallest': { q: 30, dpi: 72, gray: false },
+            'quality': { q: 90, dpi: 300, gray: false }
+        };
+
+        // --- DOM Elements ---
+        const els = {
+            upload: document.getElementById('step-upload'),
+            settings: document.getElementById('step-settings'),
+            processing: document.getElementById('step-processing'),
+            success: document.getElementById('step-success'),
+            dropZone: document.getElementById('drop-zone'),
+            fileInput: document.getElementById('file-input'),
+            advSettings: document.getElementById('adv-settings'),
+            advIcon: document.getElementById('adv-icon')
+        };
+
+        // --- Initialization ---
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+        // --- Event Listeners for Drag & Drop ---
+        els.dropZone.addEventListener('click', () => els.fileInput.click());
+        els.dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            els.dropZone.classList.add('dragover');
+        });
+        els.dropZone.addEventListener('dragleave', () => els.dropZone.classList.remove('dragover'));
+        els.dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            els.dropZone.classList.remove('dragover');
+            if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+        });
+        els.fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length) handleFile(e.target.files[0]);
+        });
+
+        // --- UI Flow Functions ---
+        function showStep(stepName) {
+            ['upload', 'settings', 'processing', 'success'].forEach(s => {
+                els[s].classList.add('hidden');
+            });
+            els[stepName].classList.remove('hidden');
+            // Small animation effect
+            els[stepName].classList.add('animate-[fadeIn_0.3s_ease-out]');
+        }
+
+        function formatBytes(bytes, decimals = 2) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024, dm = decimals < 0 ? 0 : decimals, sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+        }
+
+        async function handleFile(file) {
+            if (file.type !== 'application/pdf') {
+                alert('Please upload a valid PDF file.');
+                return;
+            }
+            
+            currentFile = file;
+            originalSize = file.size;
+            outputFilename = file.name.replace(/\.[^/.]+$/, "") + "_compressed.pdf";
+            
+            // Update UI
+            document.getElementById('ui-filename').innerText = file.name;
+            document.getElementById('ui-orig-size').innerText = formatBytes(file.size);
+            
+            // Switch view immediately to show we are doing something
+            showStep('processing');
+            document.getElementById('ui-progress-title').innerText = "Reading Document...";
+            document.getElementById('ui-progress-desc').innerText = "Extracting pages and metadata";
+            
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                pdfDoc = await pdfjsLib.getDocument({data: arrayBuffer}).promise;
+                document.getElementById('ui-pages').innerText = pdfDoc.numPages;
+                
+                // Set default goal
+                document.querySelector('input[name="goal"][value="recommended"]').checked = true;
+                handleGoalChange();
+                
+                showStep('settings');
+            } catch (error) {
+                console.error(error);
+                alert('Error reading PDF. It might be corrupted or encrypted.');
+                resetApp();
+            }
+        }
+
+        function toggleAdvanced() {
+            isAdvancedOpen = !isAdvancedOpen;
+            if(isAdvancedOpen) {
+                els.advSettings.classList.remove('hidden');
+                els.advIcon.classList.add('rotate-90');
+            } else {
+                els.advSettings.classList.add('hidden');
+                els.advIcon.classList.remove('rotate-90');
+            }
+        }
+
+        function handleGoalChange() {
+            const selectedGoal = document.querySelector('input[name="goal"]:checked').value;
+            
+            // Style active card
+            document.querySelectorAll('.goal-card').forEach(el => {
+                el.classList.remove('border-primary', 'bg-primary-light/10');
+                const check = el.querySelector('.ti-circle-check');
+                if(check) check.remove();
+            });
+            
+            const activeLabel = document.querySelector(`label[data-goal="${selectedGoal}"]`);
+            activeLabel.classList.add('border-primary', 'bg-primary-light/10');
+            if(selectedGoal !== 'target') {
+                activeLabel.insertAdjacentHTML('beforeend', '<i class="ti ti-circle-check text-primary text-xl absolute right-4 top-4"></i>');
+            }
+
+            // Handle Target Input visibility
+            const targetArea = document.getElementById('target-input-area');
+            const targetDesc = document.getElementById('target-desc');
+            if (selectedGoal === 'target') {
+                targetArea.classList.remove('hidden');
+                targetDesc.classList.add('hidden');
+                
+                // Suggest a target size (e.g. 50% of original, max 15MB)
+                let suggestedMB = (originalSize / (1024*1024)) * 0.5;
+                if(suggestedMB > 15) suggestedMB = 15;
+                if(suggestedMB < 0.5) suggestedMB = 0.5;
+                document.getElementById('target-mb').value = suggestedMB.toFixed(1);
+            } else {
+                targetArea.classList.add('hidden');
+                targetDesc.classList.remove('hidden');
+            }
+
+            // Sync advanced UI if a preset is chosen
+            if (PRESETS[selectedGoal]) {
+                document.getElementById('adv-quality').value = PRESETS[selectedGoal].q;
+                document.getElementById('adv-dpi').value = PRESETS[selectedGoal].dpi;
+                document.getElementById('adv-gray').checked = PRESETS[selectedGoal].gray;
+            }
+            
+            // Setup listener for target input changes
+            document.getElementById('target-mb').addEventListener('input', updateEstimates);
+            
+            updateEstimates();
+        }
+
+        function getCurrentSettings() {
+            const goal = document.querySelector('input[name="goal"]:checked').value;
+            let settings = { q: 65, dpi: 150, gray: false };
+
+            if (isAdvancedOpen || goal === 'target' === false) {
+                // If user is fiddling with advanced or using presets, read UI
+                settings.q = parseInt(document.getElementById('adv-quality').value);
+                settings.dpi = parseInt(document.getElementById('adv-dpi').value);
+                settings.gray = document.getElementById('adv-gray').checked;
+            }
+
+            // Smart Target Heuristics
+            if (goal === 'target' && !isAdvancedOpen) {
+                const targetMB = parseFloat(document.getElementById('target-mb').value) || 1;
+                const origMB = originalSize / (1024*1024);
+                const ratio = targetMB / origMB;
+
+                // Adjust settings to attempt hitting the ratio
+                if (ratio >= 0.9) { settings = { q: 90, dpi: 300, gray: false }; }
+                else if (ratio >= 0.6) { settings = { q: 70, dpi: 150, gray: false }; }
+                else if (ratio >= 0.4) { settings = { q: 50, dpi: 150, gray: false }; }
+                else if (ratio >= 0.2) { settings = { q: 35, dpi: 96, gray: false }; }
+                else { settings = { q: 20, dpi: 72, gray: true }; } // Desperate measures
+                
+                // Sync to UI so user sees what "Target" decided if they open advanced
+                document.getElementById('adv-quality').value = settings.q;
+                document.getElementById('adv-dpi').value = settings.dpi;
+                document.getElementById('adv-gray').checked = settings.gray;
+            }
+            
+            // Update UI text for slider
+            document.getElementById('ui-quality-val').innerText = settings.q + '%';
+            
+            return settings;
+        }
+
+        function updateEstimates() {
+            if (!originalSize) return;
+            const s = getCurrentSettings();
+            
+            // Rough estimation math
+            const qFactor = s.q / 100;
+            const dpiFactor = Math.pow(s.dpi / 300, 2); // DPI impact is squared roughly
+            const grayFactor = s.gray ? 0.6 : 1;
+            
+            // Base estimation (assuming PDF is mostly raster images. Vectors won't compress this way)
+            let estSize = originalSize * qFactor * dpiFactor * grayFactor * 0.9;
+            
+            // Floor for overhead
+            if (estSize < 50000) estSize = 50000; 
+
+            document.getElementById('ui-estimate').innerText = '~' + formatBytes(estSize);
+        }
+
+        async function startCompression() {
+            showStep('processing');
+            const settings = getCurrentSettings();
+            const totalPages = pdfDoc.numPages;
+            const scale = settings.dpi / 72; // pdf.js default is 72 dpi
+            const quality = settings.q / 100;
+
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+            let doc = null;
+
+            document.getElementById('btn-compress').disabled = true;
+
+            try {
+                for (let i = 1; i <= totalPages; i++) {
+                    // Update Progress UI
+                    document.getElementById('ui-progress-title').innerText = `Processing Page ${i} of ${totalPages}`;
+                    document.getElementById('ui-progress-desc').innerText = "Applying image optimization...";
+                    const pct = Math.round(((i - 1) / totalPages) * 100);
+                    document.getElementById('ui-progress-bar').style.width = pct + '%';
+                    document.getElementById('ui-progress-pct').innerText = pct;
+
+                    const page = await pdfDoc.getPage(i);
+                    const viewport = page.getViewport({ scale: scale });
+                    
+                    // Original dimensions for jsPDF
+                    const origViewport = page.getViewport({ scale: 1 });
+                    const pdfW = origViewport.width;
+                    const pdfH = origViewport.height;
+
+                    canvas.width = viewport.width;
+                    canvas.height = viewport.height;
+
+                    // Fill white background (removes transparency)
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                    await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+
+                    // Grayscale conversion if requested
+                    if (settings.gray) {
+                        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                        const data = imgData.data;
+                        for (let j = 0; j < data.length; j += 4) {
+                            const avg = Math.round(0.299 * data[j] + 0.587 * data[j+1] + 0.114 * data[j+2]);
+                            data[j] = avg;     // R
+                            data[j+1] = avg;   // G
+                            data[j+2] = avg;   // B
+                        }
+                        ctx.putImageData(imgData, 0, 0);
+                    }
+
+                    // Extract image data. JPEG is usually much smaller for photos.
+                    const imgDataUrl = canvas.toDataURL('image/jpeg', quality);
+
+                    // Initialize jsPDF on first page
+                    if (i === 1) {
+                        const orientation = pdfW > pdfH ? 'landscape' : 'portrait';
+                        // unit pt ensures 1:1 mapping with pdf.js viewport scale 1
+                        doc = new jspdf.jsPDF({ orientation: orientation, unit: 'pt', format: [pdfW, pdfH], compress: true });
+                    } else {
+                        doc.addPage([pdfW, pdfH]);
+                    }
+
+                    doc.addImage(imgDataUrl, 'JPEG', 0, 0, pdfW, pdfH, undefined, 'FAST');
+
+                    // Allow UI to breathe
+                    await new Promise(r => setTimeout(r, 10));
+                }
+
+                // Finalizing
+                document.getElementById('ui-progress-title').innerText = "Rebuilding Document...";
+                document.getElementById('ui-progress-desc').innerText = "Finishing up...";
+                document.getElementById('ui-progress-bar').style.width = '100%';
+                document.getElementById('ui-progress-pct').innerText = '100';
+
+                // Allow UI to render 100% before locking thread to output
+                await new Promise(r => setTimeout(r, 100));
+
+                const outArray = doc.output('arraybuffer');
+                outputBlob = new Blob([outArray], { type: 'application/pdf' });
+                
+                showSuccess();
+
+            } catch (error) {
+                console.error("Compression failed:", error);
+                alert("An error occurred during compression. The document might be too complex or large for browser memory.");
+                showStep('settings');
+            } finally {
+                document.getElementById('btn-compress').disabled = false;
+            }
+        }
+
+        function showSuccess() {
+            const finalSize = outputBlob.size;
+            
+            document.getElementById('ui-res-orig').innerText = formatBytes(originalSize);
+            document.getElementById('ui-res-new').innerText = formatBytes(finalSize);
+            
+            let savedPct = Math.round(((originalSize - finalSize) / originalSize) * 100);
+            if (savedPct < 0) savedPct = 0; // Edge case where file gets bigger
+            
+            document.getElementById('ui-res-saved').innerText = savedPct;
+            
+            // Adjust celebration text if no savings
+            if(savedPct === 0) {
+                 document.getElementById('ui-res-saved').parentElement.innerHTML = 'File was already highly optimized.';
+                 document.getElementById('ui-res-saved').parentElement.classList.replace('text-primary-dark', 'text-gray-600');
+                 document.getElementById('ui-res-saved').parentElement.classList.replace('bg-primary-light', 'bg-gray-200');
+            }
+
+            showStep('success');
+        }
+
+        function downloadPDF() {
+            if (!outputBlob) return;
+            const url = URL.createObjectURL(outputBlob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = outputFilename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 10000);
+        }
+
+        function resetApp() {
+            currentFile = null;
+            originalSize = 0;
+            pdfDoc = null;
+            outputBlob = null;
+            els.fileInput.value = "";
+            document.getElementById('ui-progress-bar').style.width = '0%';
+            
+            // Reset advanced visual
+            if(isAdvancedOpen) toggleAdvanced();
+            
+            showStep('upload');
+        }
+        
+        // Add custom Tailwind keyframes dynamically
+        tailwind.config.theme.extend.keyframes = {
+            fadeIn: {
+                '0%': { opacity: '0', transform: 'translateY(10px)' },
+                '100%': { opacity: '1', transform: 'translateY(0)' },
+            }
+        };
+    </script>
+</body>
+</html>
